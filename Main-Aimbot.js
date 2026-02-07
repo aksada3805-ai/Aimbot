@@ -78,10 +78,12 @@
             <label>Soft Aim <input type="checkbox" id="aim-toggle"></label>
             <label>FOV Overlay <input type="checkbox" id="fov-toggle"></label>
             <label>Aim Smooth<input type="range" id="smooth-slider" min="1" max="10" value="4"></label>
+            <div id="worm-status" style="margin-top:8px;color:#9aa0a6;font-size:12px;">Status: Initializing…</div>
         </div>
     `;
     document.body.insertAdjacentHTML('beforeend', uiHTML);
     const menu = document.getElementById('wormMenu');
+    const status = document.getElementById('worm-status');
  
     // === Toggle Menu With Ctrl+Alt+G+3
     let buffer = [];
@@ -113,9 +115,19 @@
     document.getElementById('trigger-toggle').addEventListener('change', e => config.triggerbot = e.target.checked);
     document.getElementById('aim-toggle').addEventListener('change', e => config.aim = e.target.checked);
     document.getElementById('fov-toggle').addEventListener('change', e => config.fov = e.target.checked);
-    document.getElementById('smooth-slider').addEventListener('input', e => config.smoothness = parseInt(e.target.value));
- 
+    document.getElementById('smooth-slider').addEventListener('input', e => config.smoothness = parseInt(e.target.value, 10));
+
     let aimX = 0, aimY = 0;
+    let lastTriggerAt = 0;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let corsBlocked = false;
+
+    function setStatus(message, color = '#9aa0a6') {
+        status.textContent = `Status: ${message}`;
+        status.style.color = color;
+    }
  
     function drawESP(x, y, w, h, scaleX, scaleY) {
         const box = document.createElement('div');
@@ -159,13 +171,21 @@
  
     function scanFrame() {
         const video = document.querySelector('video');
-        if (!video || video.videoWidth === 0) return;
- 
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
- 
+        if (!video || video.videoWidth === 0 || !ctx) {
+            setStatus('Waiting for stream…');
+            return;
+        }
+
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
+
+        if (corsBlocked) {
+            setStatus('Canvas read blocked by browser security (CORS).', '#ff6b6b');
+            return;
+        }
+
         try {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -216,8 +236,10 @@
  
             // Triggerbot
             if (config.triggerbot) {
+                const now = performance.now();
                 const mid = ctx.getImageData(centerX, centerY, 1, 1).data;
-                if (mid[0] > 200 && mid[1] < 80 && mid[2] < 80) {
+                if (mid[0] > 200 && mid[1] < 80 && mid[2] < 80 && now - lastTriggerAt > 120) {
+                    lastTriggerAt = now;
                     document.dispatchEvent(new KeyboardEvent('keydown', { key: config.aimKey, bubbles: true }));
                     document.dispatchEvent(new KeyboardEvent('keyup', { key: config.aimKey, bubbles: true }));
                 }
@@ -235,9 +257,16 @@
             }
  
             if (config.fov) drawFOV();
- 
+            setStatus('Running', '#7CFC95');
+
         } catch (err) {
-            // Ignore CORS errors
+            if (err && (err.name === 'SecurityError' || err.name === 'IndexSizeError')) {
+                corsBlocked = true;
+                setStatus('Browser blocked pixel reads (CORS/security).', '#ff6b6b');
+                return;
+            }
+
+            setStatus('Scan error. Retrying…', '#ffd166');
         }
     }
  
