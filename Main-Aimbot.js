@@ -89,7 +89,8 @@
         buffer.push(e.key.toLowerCase());
         if (buffer.length > 5) buffer.shift();
         if (buffer.join('-').includes('control-alt-g-3')) {
-            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+            const isHidden = getComputedStyle(menu).display === 'none';
+            menu.style.display = isHidden ? 'block' : 'none';
             buffer = [];
         }
     });
@@ -168,8 +169,8 @@
         try {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
+            const centerX = Math.floor(canvas.width / 2);
+            const centerY = Math.floor(canvas.height / 2);
             const targets = [];
  
             for (let y = 0; y < canvas.height; y += 6) {
